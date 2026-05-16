@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection (profiles, progress, packs)
+    match /users/{userId} {
+      // Public read for profiles/progress UI
+      allow read: if true;
+
+      // Only the user can write their own user doc
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // studySessions (user-written)
+      match /studySessions/{sessionId} {
+        allow read: if true;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // packs owned by the user
+      match /packs/{packId} {
+        // Public read for community browsing
+        allow read: if true;
+
+        // Owner can create/delete
+        allow create, delete: if request.auth != null && request.auth.uid == userId;
+
+        // Only the owner may update the pack document directly.
+        // Community likes are stored in the likes subcollection and counted server-side.
+        // Views can be incremented by anyone (for view tracking).
+        allow update: if request.auth != null && request.auth.uid == userId || 
+                         (resource.data.keys().hasOnly(['views']) && request.resource.data.keys().hasOnly(['views']));
+
+        match /likes/{likerId} {
+          allow read: if true;
+          allow create: if request.auth != null && request.auth.uid == likerId;
+          allow update: if false;
+          allow delete: if request.auth != null && request.auth.uid == likerId;
+        }
+
+        match /views/{viewId} {
+          allow read: if false;
+          allow create: if true;
+          allow update, delete: if false;
+        }
+
+        // cards subcollection: public read, owner write
+        match /cards/{cardId} {
+          allow read: if true;
+          allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
